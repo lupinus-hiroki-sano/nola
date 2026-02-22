@@ -1,0 +1,174 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Meiryo', sans-serif;
+  height: 100vh;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ─── Toolbar ─────────────────────────────────────── */
+#toolbar {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #d0d0d0;
+  gap: 4px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 2px;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 24px;
+  background: #c0c0c0;
+  margin: 0 6px;
+}
+
+#toolbar button {
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: #444;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+#toolbar button:hover {
+  background: #e0e0e0;
+  border-color: #bbb;
+}
+
+#toolbar button:active {
+  background: #d0d0d0;
+}
+
+#toolbar button.is-active {
+  background: #d8e8f8;
+  border-color: #90b8d8;
+  color: #1a5276;
+}
+
+/* ─── Editor ──────────────────────────────────────── */
+#editor-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 24px;
+  background: white;
+}
+
+#editor {
+  max-width: 800px;
+  margin: 0 auto;
+  min-height: 100%;
+}
+
+/* Tiptap / ProseMirror */
+.tiptap {
+  outline: none;
+  min-height: 100%;
+  font-size: 15px;
+  line-height: 1.7;
+  color: #222;
+}
+
+.tiptap:focus {
+  outline: none;
+}
+
+.tiptap p {
+  margin: 0 0 0.6em 0;
+}
+
+.tiptap h1 {
+  font-size: 1.8em;
+  margin: 0.8em 0 0.4em 0;
+  padding-bottom: 0.2em;
+  border-bottom: 2px solid #eee;
+}
+
+.tiptap h2 {
+  font-size: 1.4em;
+  margin: 0.7em 0 0.3em 0;
+}
+
+.tiptap h3 {
+  font-size: 1.15em;
+  margin: 0.6em 0 0.3em 0;
+}
+
+.tiptap ul,
+.tiptap ol {
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+
+.tiptap li {
+  margin: 0.15em 0;
+}
+
+.tiptap li p {
+  margin: 0;
+}
+
+.tiptap img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 12px 0;
+  display: block;
+  cursor: default;
+}
+
+.tiptap img.ProseMirror-selectednode {
+  outline: 3px solid #68cef8;
+  border-radius: 4px;
+}
+
+.tiptap strong {
+  font-weight: 700;
+}
+
+.tiptap em {
+  font-style: italic;
+}
+
+/* ─── Status Bar ──────────────────────────────────── */
+#statusbar {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  background: #f0f0f0;
+  border-top: 1px solid #d0d0d0;
+  font-size: 12px;
+  color: #666;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+#dirty-indicator {
+  color: transparent;
+}
+
+#dirty-indicator.dirty {
+  color: #e67e22;
+  font-weight: bold;
+}

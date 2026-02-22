@@ -1,0 +1,63 @@
+{
+  "name": "nola",
+  "version": "0.1.0",
+  "description": "NOLA - Next-generation Notepad with WYSIWYG text + image editing (.nola ZIP format)",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite build && electron .",
+    "build": "vite build",
+    "start": "electron .",
+    "dist": "vite build && electron-builder"
+  },
+  "dependencies": {
+    "@tiptap/core": "^2.11.0",
+    "@tiptap/extension-image": "^2.11.0",
+    "@tiptap/pm": "^2.11.0",
+    "@tiptap/starter-kit": "^2.11.0",
+    "adm-zip": "^0.5.16",
+    "archiver": "^7.0.1"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "sharp": "^0.34.5",
+    "to-ico": "^1.1.5",
+    "vite": "^6.0.0"
+  },
+  "build": {
+    "appId": "com.lupinus.nola",
+    "productName": "NOLA",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/icon.*",
+      "node_modules/**/*"
+    ],
+    "icon": "assets/icon",
+    "fileAssociations": [
+      {
+        "ext": "nola",
+        "name": "NOLA Document",
+        "description": "NOLA Document File",
+        "mimeType": "application/x-nola",
+        "role": "Editor"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    }
+  }
+}

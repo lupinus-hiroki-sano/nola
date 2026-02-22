@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOLA</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="toolbar">
+      <div class="toolbar-group">
+        <button id="btn-new" title="New (Ctrl+N)">New</button>
+        <button id="btn-open" title="Open (Ctrl+O)">Open</button>
+        <button id="btn-save" title="Save (Ctrl+S)">Save</button>
+        <button id="btn-save-as" title="Save As (Ctrl+Shift+S)">Save As</button>
+      </div>
+      <div class="toolbar-separator"></div>
+      <div class="toolbar-group">
+        <button id="btn-bold" title="Bold (Ctrl+B)"><b>B</b></button>
+        <button id="btn-italic" title="Italic (Ctrl+I)"><i>I</i></button>
+      </div>
+      <div class="toolbar-separator"></div>
+      <div class="toolbar-group">
+        <button id="btn-h1" title="Heading 1">H1</button>
+        <button id="btn-h2" title="Heading 2">H2</button>
+        <button id="btn-h3" title="Heading 3">H3</button>
+      </div>
+      <div class="toolbar-separator"></div>
+      <div class="toolbar-group">
+        <button id="btn-bullet" title="Bullet List">&#8226; List</button>
+        <button id="btn-ordered" title="Numbered List">1. List</button>
+      </div>
+      <div class="toolbar-separator"></div>
+      <div class="toolbar-group">
+        <button id="btn-undo" title="Undo (Ctrl+Z)">&#x21B6;</button>
+        <button id="btn-redo" title="Redo (Ctrl+Y)">&#x21B7;</button>
+      </div>
+    </div>
+
+    <div id="editor-wrapper">
+      <div id="editor"></div>
+    </div>
+
+    <div id="statusbar">
+      <span id="file-name">Untitled</span>
+      <span id="dirty-indicator"></span>
+    </div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
