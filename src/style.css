@@ -71,12 +71,12 @@ body {
 #editor-wrapper {
   flex: 1;
   overflow-y: auto;
-  padding: 32px 24px;
+  padding: 8px 6px;
   background: white;
 }
 
 #editor {
-  max-width: 800px;
+  max-width: 96%;
   margin: 0 auto;
   min-height: 100%;
 }
