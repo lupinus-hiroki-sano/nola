@@ -2,7 +2,23 @@
 
 WYSIWYG テキスト + 画像エディタ。Word/Google Docs のように見たまま編集でき、1ファイル（.nola = ZIP）で完結する次世代メモ帳。
 
-## 起動手順
+## インストール方法（利用者向け）
+
+### Windows ポータブル版（推奨）
+
+1. [Releases](https://github.com/lupinus-hiroki-sano/nola/releases) から `NOLA-0.1.0-win-portable.zip` をダウンロード
+2. 任意のフォルダに解凍（例: `C:\Program Files\NOLA\` やデスクトップ）
+3. `NOLA.exe` をダブルクリックで起動
+
+> **注意**: Node.js のインストールは不要です。解凍するだけで使えます。
+
+> **SmartScreen 警告**: 初回起動時に「Windows によって PC が保護されました」と表示される場合は、「詳細情報」→「実行」をクリックしてください（コード署名がないためです）。
+
+### NOLA.exe のショートカット作成（任意）
+
+- `NOLA.exe` を右クリック →「ショートカットの作成」→ デスクトップに配置すると便利です
+
+## 開発者向けセットアップ
 
 ```bash
 # 依存パッケージのインストール
@@ -16,6 +32,9 @@ npm run build
 
 # 起動のみ（ビルド済み前提）
 npm start
+
+# パッケージング（release/win-unpacked/ に NOLA.exe が生成されます）
+npm run dist
 ```
 
 ## 操作方法
@@ -43,6 +62,10 @@ npm start
 - **コピー&ペースト**: スクリーンショットやクリップボード画像を Ctrl+V で貼り付け
 - **ドラッグ&ドロップ**: 画像ファイルをエディタにドラッグ&ドロップ
 
+### ファイル関連付け
+- `.nola` ファイルをダブルクリックすると NOLA で開きます
+- エクスプローラー上で `.nola` ファイルに NOLA のアイコンが表示されます
+
 ## .nola ファイル仕様
 
 拡張子 `.nola` の実体は ZIP コンテナ。以下の構造:
@@ -68,3 +91,8 @@ document.nola (ZIP)
 - **ZIP create**: archiver
 - **ZIP extract**: adm-zip
 - **Build**: Vite
+- **Packaging**: electron-builder
+
+## ライセンス
+
+MIT
