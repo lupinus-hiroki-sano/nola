@@ -352,6 +352,37 @@ function extractNola(nolaPath) {
   return workDir;
 }
 
+// ─── Unused Asset Cleanup ─────────────────────────────
+function cleanupUnusedAssets(doc) {
+  const assetsDir = path.join(currentWorkDir, 'assets');
+  if (!fs.existsSync(assetsDir)) return;
+
+  // Collect all image src referenced in the document
+  const referenced = new Set();
+  function walk(nodes) {
+    for (const n of (nodes || [])) {
+      if (n.type === 'image' && n.attrs && n.attrs.src) {
+        // src is relative like "assets/img_xxx.png"
+        const filename = path.basename(n.attrs.src);
+        referenced.add(filename);
+      }
+      if (n.content) walk(n.content);
+    }
+  }
+  walk(doc.content);
+
+  // Delete files in assets/ that are not referenced
+  for (const file of fs.readdirSync(assetsDir)) {
+    if (!referenced.has(file)) {
+      try {
+        fs.unlinkSync(path.join(assetsDir, file));
+      } catch (e) {
+        console.error('Failed to remove unused asset:', file, e);
+      }
+    }
+  }
+}
+
 // ─── Save Helpers ──────────────────────────────────────
 async function saveNolaTo(editorJson, outPath) {
   try {
@@ -380,6 +411,7 @@ async function saveNolaTo(editorJson, outPath) {
     }
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 
+    cleanupUnusedAssets(storageDoc);
     await zipWorkDir(outPath);
     currentNolaPath = outPath;
     updateTitle();
