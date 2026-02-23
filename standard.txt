@@ -1,0 +1,343 @@
+# NOLA 実装仕様書 v2（再現用）
+# このファイルを読めば、NOLAを一発で再現できるようにする
+
+あなたはフルスタックエンジニアとして、Windows/Macで動くデスクトップアプリ「NOLA」を作成してください。
+NOLAは "次世代のメモ帳" として、Word/Google Docsのように見たまま編集（WYSIWYG）でき、
+テキストと画像（Ctrl+V貼り付け / ドラッグ&ドロップ）を同一ドキュメントで扱えます。
+保存は1ファイル完結で、拡張子は .nola（実体はZIPコンテナ）です。
+
+========================================================
+0. ゴール（MVP Done 条件）
+========================================================
+- スクショをコピーして Ctrl+V → 文中に画像が貼られ、その場で表示される
+- 画像ファイルをドラッグ&ドロップ → 文中に挿入され表示される
+- Save As で foo.nola を作れる（単一ファイル）
+- アプリ再起動 → Open で foo.nola を開くと文章と画像が復元され、編集継続できる
+- .nolaファイルをダブルクリックするとNOLAで開く（ファイル関連付け）
+- Undo/Redoが効く
+- 見出し/箇条書きが使える
+- アプリアイコン（Nの文字ロゴ）が設定されている
+- .nolaファイルにエクスプローラー上でカスタムアイコンが表示される
+
+========================================================
+1. 技術選定（固定）
+========================================================
+- Desktop: Electron
+- Editor: Tiptap (ProseMirror) — @tiptap/core, @tiptap/starter-kit, @tiptap/extension-image, @tiptap/pm
+- ZIP create: archiver
+- ZIP extract: adm-zip
+- Build: Vite
+- Icon生成: sharp + to-ico（devDependencies）
+- パッケージング: electron-builder（devDependencies）
+
+========================================================
+2. 保存フォーマット仕様（.nola = ZIP）
+========================================================
+拡張子：.nola（中身はZIP）
+ZIP内の構造（v1）：
+- doc.json        : 編集の正（Tiptap/ProseMirror JSON）
+- doc.md          : AI投入用Markdown（Save時に自動生成）
+- assets/         : 画像ファイル群
+  - assets/img_<timestamp>_<rand>.png など一意名
+- meta.json       : appVersion, formatVersion, createdAt, updatedAt, title
+
+重要ルール：
+- doc.json 内の画像srcは常に相対パス "assets/xxx.png" のみ（絶対パス禁止）
+- 画像をbase64埋め込みしない（ファイル化してassetsに保存）
+
+========================================================
+3. プロジェクト構成
+========================================================
+nola/
+├── package.json
+├── vite.config.js
+├── .gitignore              # node_modules/, dist/, release/, *.nola
+├── README.md
+├── assets/
+│   ├── icon.svg            # SVGソース
+│   ├── icon.png            # 512x512 PNG
+│   ├── icon.ico            # Windows ICO (16,32,48,256)
+│   └── icon-{16,32,48,64,128,256,512}.png
+├── scripts/
+│   └── generate-icons.js   # SVG → PNG/ICO 生成スクリプト
+├── electron/
+│   ├── main.js             # Electronメインプロセス
+│   └── preload.js          # contextBridge API
+├── src/
+│   ├── index.html          # ツールバー + エディタ + ステータスバー
+│   ├── main.js             # Tiptapエディタ + UI制御
+│   └── style.css           # スタイル
+└── dist/                   # Viteビルド出力（git管理外）
+
+========================================================
+4. package.json 仕様
+========================================================
+- name: "nola", version: "0.1.0"
+- main: "electron/main.js"
+- scripts:
+  - "dev": "vite build && electron ."
+  - "build": "vite build"
+  - "start": "electron ."
+  - "dist": "vite build && electron-builder"
+- dependencies: @tiptap/core, @tiptap/extension-image, @tiptap/pm, @tiptap/starter-kit, adm-zip, archiver
+- devDependencies: electron, electron-builder, sharp, to-ico, vite
+- build (electron-builder):
+  - appId: "com.lupinus.nola"
+  - productName: "NOLA"
+  - icon: "assets/icon"
+  - fileAssociations: [{ ext: "nola", name: "NOLA Document", mimeType: "application/x-nola", role: "Editor" }]
+  - win: { target: "nsis", icon: "assets/icon.ico" }
+  - nsis: { oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true }
+
+========================================================
+5. vite.config.js
+========================================================
+- root: "src"
+- base: "./"
+- build.outDir: "../dist"
+- build.emptyOutDir: true
+
+========================================================
+6. Electronメインプロセス（electron/main.js）詳細仕様
+========================================================
+
+【重要な設計判断・ハマりポイント】
+
+A) 画像表示方式: file:// URL + webSecurity: false
+   - カスタムプロトコル（nola-asset://等）は使わない
+     → Windows環境で net.fetch(pathToFileURL(...)) が ERR_FILE_NOT_FOUND になる問題があるため
+   - BrowserWindowの webPreferences に webSecurity: false を設定
+   - 画像のsrcには pathToFileURL() で生成した file:// URL を使用
+   - require('url').pathToFileURL を使うこと
+
+B) パス変換（相対 ↔ file:// URL）
+   - toFileUrl(relPath): path.join(currentWorkDir, relPath) → pathToFileURL().href
+   - getWorkDirPrefix(): workDirのfile:// URLをプレフィックスとして取得
+   - convertPathsForEditor(doc): JSON.stringify の replacer で
+     "assets/..." → file:// URL に変換（キー "src" のみ対象）
+   - convertPathsForStorage(doc): file:// URL → "assets/..." 相対パスに戻す
+     - prefix一致による変換 + /assets/ パターンのフォールバック
+     - decodeURIComponent() でエンコードされた文字を戻す
+
+C) 画像保存（save-image IPC）
+   - renderer から Array<number> (Uint8Array) と ext を受け取る
+   - ファイル名: img_<timestamp>_<rand>.<ext>
+   - workDir/assets/ に保存
+   - 戻り値: pathToFileURL(fullPath).href（file:// URL文字列）
+     ※ 相対パスではなく file:// URL を返す
+
+D) メニュー構成
+   - File: New, Open, Save, Save As, Quit
+   - Edit: Undo, Redo, Cut, Copy, Paste, SelectAll
+   - View: Reload, DevTools, ZoomIn/Out, Fullscreen
+   - 【重要】Paste は { role: 'paste' } を使わない
+     → role: 'paste' は Electron が Ctrl+V を奪い、ProseMirrorに画像ペーストが届かなくなる
+     → { label: 'Paste', click: () => mainWindow.webContents.paste() } と書く（acceleratorなし）
+     → これにより Ctrl+V は ProseMirror（またはdocument pasteハンドラ）に到達する
+   - menu-action IPCで renderer に通知: 'new', 'open', 'save', 'save-as', 'undo', 'redo'
+
+E) ファイル関連付け（.nola ダブルクリックで開く）
+   - シングルインスタンスロック: app.requestSingleInstanceLock()
+     - 取得失敗 → app.quit()
+     - 'second-instance' イベントでコマンドライン引数からファイルパスを取得して開く
+   - macOS: app.on('open-file', ...) でファイルパスを取得
+   - getFilePathFromArgs(args): args を走査して .nola で終わるパスを見つける
+     - path.resolve して fs.existsSync で確認
+   - openDocFromPath(nolaPath):
+     - cleanupWorkDir → extractNola → doc.json読み込み → convertPathsForEditor
+     - mainWindow.webContents.send('load-document', { doc, fileName })
+   - app.whenReady() 内で:
+     - getFilePathFromArgs(process.argv) || pendingFilePath でファイルパスを確認
+     - createNewDoc() でデフォルトの空ドキュメントを作成
+     - ファイルがあれば mainWindow.webContents.on('did-finish-load', () => openDocFromPath(...))
+
+F) Windowsレジストリ登録（registerFileAssociation）
+   - require('child_process').execFileSync で reg コマンドを実行
+   - 登録キー:
+     - HKCU\Software\Classes\.nola → "NOLA.Document"
+     - HKCU\Software\Classes\NOLA.Document → "NOLA Document"
+     - HKCU\Software\Classes\NOLA.Document\DefaultIcon → iconPath
+       【重要】iconPath はクォートで囲まない（execFileSync の配列引数なのでそのまま渡す）
+     - HKCU\Software\Classes\NOLA.Document\shell\open\command → コマンド
+   - コマンド:
+     - app.isPackaged: `"${process.execPath}" "%1"`
+     - 開発時: `"${process.execPath}" "${projectDir}" "%1"`
+   - 登録後、SHChangeNotify でエクスプローラーのアイコンキャッシュを更新:
+     - PowerShell経由で SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero) を呼ぶ
+   - regOpts: { stdio: 'ignore', windowsHide: true }
+
+G) ドキュメント管理
+   - createNewDoc(): workDir作成 → 空 doc.json → 空 content
+   - cleanupWorkDir(): fs.rmSync(currentWorkDir, { recursive: true, force: true })
+   - extractNola(nolaPath): AdmZip で一時ディレクトリに展開
+   - zipWorkDir(outPath): archiver('zip', { zlib: { level: 9 } }) でworkDirをZIP化
+   - saveNolaTo(editorJson, outPath):
+     - convertPathsForStorage → doc.json 保存
+     - generateMarkdown → doc.md 保存
+     - meta.json 生成/更新（createdAt は既存を保持）
+     - zipWorkDir で ZIP 出力
+   - updateTitle(): 'NOLA - <filename>' or 'NOLA - Untitled'
+
+H) Markdown生成（generateMarkdown）
+   - doc.json のノードツリーを再帰的に走査
+   - 対応: doc, heading, paragraph, bulletList, orderedList, listItem, image
+   - inline: text (bold → **, italic → *), image (![alt](relative_src))
+   - toRelativeSrc(): file:// URL からassets/...の相対パスを抽出
+
+I) BrowserWindow設定
+   - width: 1024, height: 768
+   - title: 'NOLA - Untitled'
+   - icon: path.join(__dirname, '..', 'assets', 'icon.png')
+   - webPreferences:
+     - preload: path.join(__dirname, 'preload.js')
+     - contextIsolation: true
+     - nodeIntegration: false
+     - webSecurity: false（file:// URL による画像表示のため）
+
+========================================================
+7. preload.js 仕様
+========================================================
+contextBridge.exposeInMainWorld('api', { ... }) で以下を公開:
+- newDoc()          → ipcRenderer.invoke('new-doc')
+- openDoc()         → ipcRenderer.invoke('open-doc')
+- saveImage(bytes, ext) → ipcRenderer.invoke('save-image', bytes, ext)
+- saveDocJson(json) → ipcRenderer.invoke('save-doc-json', json)
+- saveNola(json)    → ipcRenderer.invoke('save-nola', json)
+- saveNolaAs(json)  → ipcRenderer.invoke('save-nola-as', json)
+- onMenuAction(callback)   → ipcRenderer.on('menu-action', ...)
+- onLoadDocument(callback) → ipcRenderer.on('load-document', ...)
+
+========================================================
+8. renderer（src/main.js）詳細仕様
+========================================================
+
+A) Tiptap エディタ初期化
+   - extensions: StarterKit, Image.configure({ inline: false, allowBase64: false }), ImagePasteDrop
+   - content: '<p></p>'
+   - onUpdate: markDirty()
+   - onSelectionUpdate / onTransaction: updateToolbarState()
+
+B) カスタム拡張 ImagePasteDrop（ProseMirror Plugin）
+   - handlePaste: clipboardData.items から image/* を検出 → insertImageFromFile
+   - handleDrop: dataTransfer.files から image file を検出 → insertImageFromFile
+   - insertImageFromFile(file):
+     - file.arrayBuffer() → Array.from(new Uint8Array) → window.api.saveImage(bytes, ext)
+     - 返された file:// URL src で editor.chain().focus().setImage({ src }).run()
+
+C) フォールバック ペーストハンドラ（重要）
+   - document.addEventListener('paste', ..., true) — capture フェーズ
+   - ProseMirror の handlePaste より先に発火
+   - image/* があれば e.preventDefault() + e.stopPropagation() + insertImageFromFile
+   - image でなければ何もしない（ProseMirror にテキストペーストを委譲）
+   - 【理由】Electron のメニュー Paste が webContents.paste() を呼ぶ場合、
+     ProseMirror の handlePaste に到達しないケースがあるため、
+     document レベルでのフォールバックが必要
+
+D) フォールバック ドロップハンドラ
+   - editorEl.addEventListener('dragover', (e) => e.preventDefault())
+   - editorEl.addEventListener('drop', ...) — image file を検出して insertImageFromFile
+
+E) Dirty状態管理
+   - isDirty フラグ + markDirty() / clearDirty()
+   - ステータスバーに "● Unsaved changes" 表示
+   - New/Open時に isDirty なら confirm ダイアログ
+
+F) ツールバー
+   - btn-new, btn-open, btn-save, btn-save-as
+   - btn-bold, btn-italic, btn-h1, btn-h2, btn-h3, btn-bullet, btn-ordered
+   - btn-undo, btn-redo
+   - ボタンの .is-active 状態を updateToolbarState() で更新
+
+G) メニューアクション
+   - window.api.onMenuAction(handleMenuAction) で受信
+   - new: confirm → newDoc() → setContent → clearDirty
+   - open: confirm → openDoc() → setContent → clearDirty → updateFileName
+   - save: getJSON() → saveNola() → clearDirty
+   - save-as: getJSON() → saveNolaAs() → clearDirty
+   - undo/redo: editor.chain().focus().undo/redo().run()
+
+H) ファイル関連付け受信
+   - window.api.onLoadDocument(callback) で 'load-document' イベントを受信
+   - data.doc を setContent → clearDirty → updateFileName
+
+========================================================
+9. UI/HTML（src/index.html）
+========================================================
+- ツールバー: toolbar-group ごとにボタンを配置、toolbar-separator で区切り
+- エディタ: #editor-wrapper > #editor（Tiptapがここにマウント）
+- ステータスバー: #file-name + #dirty-indicator
+
+========================================================
+10. スタイル（src/style.css）
+========================================================
+- body: 100vh, overflow hidden, font-family: system fonts + Meiryo
+- #app: flex column, 100vh
+- toolbar: flex, #f0f0f0背景, ボタンはhoverで#e0e0e0, activeで#d0d0d0, .is-activeで青系
+- editor-wrapper: flex:1, overflow-y:auto, padding 32px 24px, 白背景
+- #editor: max-width 800px, margin 0 auto
+- .tiptap: outline none, font-size 15px, line-height 1.7
+- h1: border-bottom 2px solid #eee
+- img: max-width 100%, border-radius 4px, ProseMirror-selectednodeで青枠
+- statusbar: #f0f0f0, font-size 12px, dirty時はオレンジ
+
+========================================================
+11. アプリアイコン仕様
+========================================================
+
+A) SVG（assets/icon.svg）
+   - 512x512 viewBox
+   - 背景: linearGradient #6366f1 → #a855f7（indigo-to-purple）
+   - 角丸: rx="108" の rect
+   - 文字: 白い "N" の path（ドロップシャドウ付き）
+   - パス: M128,392 L128,120 L192,120 L336,328 L336,120 L392,120 L392,392 L328,392 L184,184 L184,392 Z
+
+B) アイコン生成スクリプト（scripts/generate-icons.js）
+   - sharp で SVG → PNG (16,32,48,64,128,256,512) + icon.png (512x512)
+   - to-ico で 16,32,48,256 の PNG → icon.ico
+   - density: 300 でレンダリング
+
+========================================================
+12. .gitignore
+========================================================
+node_modules/
+dist/
+release/
+*.nola
+
+========================================================
+13. 実装順序（推奨）
+========================================================
+1) package.json + vite.config.js + .gitignore 作成
+2) npm install
+3) assets/icon.svg 作成 → scripts/generate-icons.js でアイコン生成
+4) electron/preload.js 作成
+5) electron/main.js 作成（上記仕様を全て含む）
+6) src/index.html + src/style.css + src/main.js 作成
+7) vite build + electron . で動作確認
+
+========================================================
+14. 完成判定テスト
+========================================================
+- npm run dev で起動確認
+- 新規で文章を書き、スクショをCtrl+Vで貼る → 画像がインライン表示される
+- Save Asで test.nola に保存
+- アプリを閉じる → Open で test.nola を開く → 文章と画像が復元される
+- 画像をD&Dで追加できる
+- 見出し/太字/箇条書きが使える
+- Undo/Redo が動く
+- .nola ファイルをダブルクリック → NOLAで開く
+- エクスプローラーで .nola ファイルにNロゴアイコンが表示される
+- タスクバー/タイトルバーにNロゴアイコンが表示される
+
+========================================================
+15. 既知の注意事項
+========================================================
+- electron-builder の NSIS インストーラー作成は、Windows の開発者モードが有効でないと
+  winCodeSign の symlink 問題で失敗する場合がある。
+  release/win-unpacked/NOLA.exe は問題なく生成される。
+- webSecurity: false はローカルファイルアクセスに必要だが、
+  将来的にはカスタムプロトコルの改善やサンドボックス対応を検討する。
+- SHChangeNotify によるアイコンキャッシュ更新は即座に反映されない場合がある。
+  その場合はエクスプローラーの再起動で反映される。
+
+この仕様でNOLAを完成させてください。出力は「実装済みコード一式」です。
