@@ -1,8 +1,30 @@
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
+import ImageBase from '@tiptap/extension-image';
 import { Extension } from '@tiptap/core';
 import { Plugin } from '@tiptap/pm/state';
+
+// ─── Custom Image Extension with width attribute ──────
+const Image = ImageBase.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: '100%',
+        parseHTML: (element) => {
+          const style = element.getAttribute('style') || '';
+          const match = style.match(/width:\s*([\d]+%)/);
+          return match ? match[1] : '100%';
+        },
+        renderHTML: (attributes) => {
+          return { style: `width: ${attributes.width}` };
+        },
+      },
+    };
+  },
+});
+
+const IMAGE_SIZES = { 'btn-img-s': '25%', 'btn-img-m': '50%', 'btn-img-l': '100%' };
 
 let editor;
 let isDirty = false;
@@ -100,6 +122,17 @@ function updateToolbarState() {
   setActive('btn-h3', editor.isActive('heading', { level: 3 }));
   setActive('btn-bullet', editor.isActive('bulletList'));
   setActive('btn-ordered', editor.isActive('orderedList'));
+
+  // Image size buttons
+  const isImage = editor.isActive('image');
+  const currentWidth = isImage
+    ? editor.getAttributes('image').width || '100%'
+    : null;
+  for (const [btnId, size] of Object.entries(IMAGE_SIZES)) {
+    setActive(btnId, isImage && currentWidth === size);
+    const btn = document.getElementById(btnId);
+    if (btn) btn.disabled = !isImage;
+  }
 }
 
 // ─── Menu Action Handler ───────────────────────────────
@@ -182,6 +215,19 @@ function setupToolbar() {
   for (const [id, handler] of Object.entries(actions)) {
     const btn = document.getElementById(id);
     if (btn) btn.addEventListener('click', handler);
+  }
+
+  // Image size buttons
+  for (const [btnId, size] of Object.entries(IMAGE_SIZES)) {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        if (editor.isActive('image')) {
+          editor.chain().focus().updateAttributes('image', { width: size }).run();
+          markDirty();
+        }
+      });
+    }
   }
 }
 
